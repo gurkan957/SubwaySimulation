@@ -2,73 +2,84 @@ from collections import defaultdict, deque
 import heapq
 from typing import Dict, List, Tuple, Optional
 
+# Istasyon sınıfı, her bir metro istasyonunu temsil eder
 class Istasyon:
     def __init__(self, idx: str, ad: str, hat: str):
+        # İstasyonun benzersiz ID'si, adı ve bağlı olduğu hat bilgisi
         self.idx = idx
         self.ad = ad
         self.hat = hat
-        self.komsular = []  # (istasyon, süre) tuple'ları
+        self.komsular = [] # Bağlantıdaki komşu istasyonlar (başlangıçta boş)
 
     def komsu_ekle(self, istasyon: 'Istasyon', sure: int):
+        # Bir istasyon ile komşu bağlantısı ekliyoruz
         self.komsular.append((istasyon, sure))
 
     def __lt__(self, other: 'Istasyon'):
-        return self.idx < other.idx  # ID'ye göre karşılaştır
+        # İstasyonlar arasında karşılaştırma yapmak için (ID'ye göre)
+        return self.idx < other.idx
 
 class MetroAgi:
     def __init__(self):
-        self.istasyonlar: Dict[str, Istasyon] = {}
-        self.hatlar: Dict[str, List[Istasyon]] = defaultdict(list)
+        self.istasyonlar: Dict[str, Istasyon] = {} # İstasyonların sözlüğü (ID -> Istasyon)
+        self.hatlar: Dict[str, List[Istasyon]] = defaultdict(list) # Hatlar ve onlara bağlı istasyonlar
 
     def istasyon_ekle(self, idx: str, ad: str, hat: str) -> None:
+        # Yeni bir istasyon eklemek için
         if idx not in self.istasyonlar:
             istasyon = Istasyon(idx, ad, hat)
             self.istasyonlar[idx] = istasyon
-            self.hatlar[hat].append(istasyon)
+            self.hatlar[hat].append(istasyon) # İstasyonun bağlı olduğu hat bilgisi ekleniyor
 
     def baglanti_ekle(self, istasyon1_id: str, istasyon2_id: str, sure: int) -> None:
+        # İki istasyon arasındaki bağlantıyı (komşuluğu) ekliyoruz
         istasyon1 = self.istasyonlar.get(istasyon1_id)
         istasyon2 = self.istasyonlar.get(istasyon2_id)
         if istasyon1 and istasyon2:
-            istasyon1.komsu_ekle(istasyon2, sure)
-            istasyon2.komsu_ekle(istasyon1, sure)
+            istasyon1.komsu_ekle(istasyon2, sure) # Komşu ekleniyor
+            istasyon2.komsu_ekle(istasyon1, sure) # Komşu ekleniyor (bağlantı iki yönlü)
 
     def heuristik(self, istasyon1: Istasyon, hedef_id: str) -> int:
-        return abs(int(istasyon1.idx[1]) - int(hedef_id[1]))  # Basit bir heuristik
+        # A* algoritmasında kullanılacak heuristik (tahmin) fonksiyonu
+        # Burada basitçe ID'lerin farkına bakarak bir tahmin değeri döndürüyoruz
+        return abs(int(istasyon1.idx[1]) - int(hedef_id[1]))
 
     def en_hizli_rota_bul(self, baslangic_id: str, hedef_id: str) -> Optional[Tuple[List[Istasyon], int]]:
-        
+        # A* algoritması ile en hızlı rotayı (en kısa mesafeyi) bulma
         if baslangic_id not in self.istasyonlar or hedef_id not in self.istasyonlar:
-            return None
+            return None # Başlangıç veya hedef istasyonu ağda yoksa None döner
+        # Öncelikli kuyruk (f değeri, toplam süre, mevcut istasyon, rota) ile başlatıyoruz
         pq = [(0 + self.heuristik(self.istasyonlar[baslangic_id], hedef_id), 0, self.istasyonlar[baslangic_id], [self.istasyonlar[baslangic_id]])]
-        ziyaret_edildi = {}
+        ziyaret_edildi = {} # Ziyaret edilen istasyonları ve sürelerini tutacak sözlük
         while pq:
-            f, toplam_sure, mevcut, rota = heapq.heappop(pq)
+            f, toplam_sure, mevcut, rota = heapq.heappop(pq) # Öncelikli kuyruktan eleman çıkar
             if mevcut.idx == hedef_id:
-                return (rota, toplam_sure)
+                return (rota, toplam_sure) # Hedefe ulaşıldı, rota ve toplam süreyi döndür
             if mevcut.idx in ziyaret_edildi and ziyaret_edildi[mevcut.idx] <= toplam_sure:
-                continue
-            ziyaret_edildi[mevcut.idx] = toplam_sure
+                continue # Bu istasyonu daha hızlı bir şekilde ziyaret ettiysek, devam etme
+            ziyaret_edildi[mevcut.idx] = toplam_sure # Bu istasyonu ziyaret ettik ve süreyi kaydettik
+            # Komşu istasyonlara geçiyoruz
             for komsu, sure in mevcut.komsular:
-                yeni_sure = toplam_sure + sure
+                yeni_sure = toplam_sure + sure # Yeni toplam süre
                 heapq.heappush(pq, (yeni_sure + self.heuristik(komsu, hedef_id), yeni_sure, komsu, rota + [komsu]))
-        return None
+        return None # Eğer hedefe ulaşılamazsa None döndür
 
     def en_az_aktarma_bul(self, baslangic_id: str, hedef_id: str) -> Optional[List[Istasyon]]:
-        
+        # BFS algoritması ile en az aktarmalı rotayı bulma
         if baslangic_id not in self.istasyonlar or hedef_id not in self.istasyonlar:
-            return None
-        kuyruk = deque([(self.istasyonlar[baslangic_id], [self.istasyonlar[baslangic_id]])])
-        ziyaret_edildi = set()
+            return None # Başlangıç veya hedef istasyonu ağda yoksa None döner
+        kuyruk = deque([(self.istasyonlar[baslangic_id], [self.istasyonlar[baslangic_id]])]) # Kuyruğu başlatıyoruz
+        ziyaret_edildi = set() # Ziyaret edilen istasyonlar
         while kuyruk:
-            mevcut, rota = kuyruk.popleft()
+            mevcut, rota = kuyruk.popleft() # Kuyruğun önünden eleman al
             if mevcut.idx == hedef_id:
-                return rota
-            ziyaret_edildi.add(mevcut.idx)
+                return rota # Hedefe ulaşıldı, rota döndürülüyor
+            ziyaret_edildi.add(mevcut.idx) # Bu istasyonu ziyaret ettik
+            # Komşu istasyonlara geçiyoruz
             for komsu, _ in mevcut.komsular:
                 if komsu.idx not in ziyaret_edildi:
-                    kuyruk.append((komsu, rota + [komsu]))
-        return None
+                    kuyruk.append((komsu, rota + [komsu])) # Komşuyu kuyruğa ekle
+        return None # Eğer hedefe ulaşılamazsa None döndür
 
 if __name__ == "__main__":
     metro = MetroAgi()
